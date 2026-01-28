@@ -57,25 +57,29 @@ class KintsugiAgent:
             target_path: Path to the target Java project.
         """
         self.settings = settings
-        self.target_path = Path(target_path)
+        self.target_path = Path(target_path).resolve()
 
         # Initialize components
         self.vertex_client = VertexAIClient(settings)
         self.vertex_client.initialize()
 
-        # Sensing
+        # Sensing (感知) - Enhanced with source code extraction
         self.log_collector = LogCollector(settings)
-        self.rca = RootCauseAnalyzer(settings, self.vertex_client)
+        self.rca = RootCauseAnalyzer(
+            settings,
+            self.vertex_client,
+            target_repo_path=self.target_path,  # Enable auto source extraction
+        )
 
-        # Reflection
+        # Reflection (反射)
         self.test_generator = TestGenerator(settings, self.vertex_client)
         self.test_runner = TestContainerRunner(settings, self.target_path)
 
-        # Evolution
+        # Evolution (進化)
         self.code_fixer = CodeFixer(settings, self.vertex_client)
         self.openrewrite = OpenRewriteExecutor(settings, self.target_path)
 
-        # Governance
+        # Governance (統治)
         self.blast_analyzer = BlastRadiusAnalyzer(settings, self.vertex_client)
         self.pr_manager = PRManager(settings)
 
@@ -180,39 +184,73 @@ Auto-merged: {results['auto_merged']}""",
         return results
 
     async def _sensing_phase(self, incident_id: str | None) -> list:
-        """Execute the sensing phase.
+        """Execute the sensing phase (感知).
+
+        Uses enhanced LogCollector with signature normalization and
+        Cloud Run metadata extraction for precise incident grouping.
 
         Args:
             incident_id: Optional specific incident ID.
 
         Returns:
-            list: Detected incidents.
+            list: Detected incidents with enhanced metadata.
         """
-        logger.info("Starting sensing phase")
+        logger.info("Starting sensing phase (感知)")
 
         if incident_id:
-            # Fetch specific incident
-            entries = self.log_collector.collect_errors()
-            incidents = [
-                {
-                    "signature": incident_id,
-                    "count": 1,
-                    "message": entry.message,
-                    "trace": entry.trace,
-                    "first_seen": entry.timestamp,
-                    "last_seen": entry.timestamp,
-                }
-                for entry in entries
-                if incident_id in entry.message or incident_id in (entry.trace or "")
-            ]
+            # Fetch specific incident by searching logs
+            entries = self.log_collector.collect_errors(max_results=200)
+            incidents = []
+
+            for entry in entries:
+                # Match by signature or message content
+                if incident_id in entry.message or incident_id in (entry.trace or ""):
+                    # Extract Cloud Run context if available
+                    resource = entry.resource
+                    if entry.cloud_run_context:
+                        resource = entry.cloud_run_context.to_dict()
+
+                    incidents.append({
+                        "signature": incident_id,
+                        "count": 1,
+                        "message": entry.message,
+                        "trace": entry.trace,
+                        "first_seen": entry.timestamp,
+                        "last_seen": entry.timestamp,
+                        "resource": resource,
+                        "exception_type": None,
+                        "affected_methods": [],
+                        "cloud_run_services": (
+                            [entry.cloud_run_context.service_name]
+                            if entry.cloud_run_context
+                            else []
+                        ),
+                    })
         else:
-            incidents = self.log_collector.get_recent_incidents()
+            # Get grouped incidents with enhanced metadata
+            incidents = self.log_collector.get_recent_incidents(
+                min_occurrences=1,  # Include all for comprehensive analysis
+                max_incidents=20,
+            )
+
+        # Log summary with enhanced details
+        for incident in incidents[:5]:
+            logger.info(
+                "Incident detected",
+                signature=incident.get("signature"),
+                count=incident.get("count"),
+                exception_type=incident.get("exception_type"),
+                services=incident.get("cloud_run_services", []),
+            )
 
         logger.info("Sensing phase complete", incidents=len(incidents))
         return incidents
 
     async def _reflection_phase(self, incident: dict) -> tuple[bool, any]:
-        """Execute the reflection phase.
+        """Execute the reflection phase (反射).
+
+        Uses enhanced RootCauseAnalyzer with automatic source code
+        extraction and precise error location identification.
 
         Args:
             incident: Incident to reflect on.
@@ -220,12 +258,31 @@ Auto-merged: {results['auto_merged']}""",
         Returns:
             tuple: (bug_confirmed, analysis)
         """
-        logger.info("Starting reflection phase", incident=incident["signature"])
+        logger.info("Starting reflection phase (反射)", incident=incident["signature"])
 
-        # Analyze root cause
+        # Analyze root cause with auto source extraction
+        # The enhanced analyzer will:
+        # 1. Parse the stack trace to extract com.kintsugi.demo classes
+        # 2. Auto-fetch source code from target repo
+        # 3. Include full context in Gemini prompt for precise analysis
         analysis = await self.rca.analyze_incident(incident)
 
-        # Generate failing test
+        # Log detailed analysis results
+        logger.info(
+            "Root cause analysis complete",
+            summary=analysis.summary,
+            confidence=analysis.confidence,
+            severity=analysis.severity_assessment,
+            error_file=(
+                analysis.error_location.file_path if analysis.error_location else None
+            ),
+            error_line=(
+                analysis.error_location.line_number if analysis.error_location else None
+            ),
+            related_files=analysis.related_files,
+        )
+
+        # Generate failing test based on precise analysis
         test = await self.test_generator.generate_failing_test(analysis)
 
         # Run test to confirm bug
