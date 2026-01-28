@@ -1,0 +1,130 @@
+# CI/CD Pipeline for Kintsugi-Helix
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: '3.11'
+  JAVA_VERSION: '21'
+
+jobs:
+  # Python Agent Tests
+  agent-tests:
+    name: Agent Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./agent-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run linting
+        working-directory: ./agent-core
+        run: |
+          ruff check .
+          black --check .
+
+      - name: Run type checking
+        working-directory: ./agent-core
+        run: mypy src/ --ignore-missing-imports
+
+      - name: Run tests
+        working-directory: ./agent-core
+        run: pytest tests/ -v --cov=src --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./agent-core/coverage.xml
+          flags: agent
+
+  # Java Target App Tests
+  target-app-tests:
+    name: Target App Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run tests
+        working-directory: ./target-app
+        run: ./mvnw test -B
+
+      - name: Run spotless check
+        working-directory: ./target-app
+        run: ./mvnw spotless:check -B
+
+  # Terraform Validation
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Terraform Format
+        working-directory: ./infrastructure/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate (Dev)
+        working-directory: ./infrastructure/terraform/environments/dev
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # Docker Build
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [agent-tests, target-app-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Agent Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./agent-core
+          push: false
+          tags: kintsugi-agent:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Target App Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./target-app
+          push: false
+          tags: kintsugi-target:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

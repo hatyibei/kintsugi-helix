@@ -1,0 +1,48 @@
+# Kintsugi-Helix Agent Configuration
+
+# Vertex AI Settings
+vertex_ai:
+  default_model: gemini-1.5-pro
+  flash_model: gemini-1.5-flash
+  temperature: 0.2
+  max_output_tokens: 8192
+
+# Sensing (感知) Settings
+sensing:
+  log_filter: "severity>=ERROR"
+  lookback_hours: 24
+  max_results: 100
+  min_occurrences_for_incident: 3
+
+# Reflection (反射) Settings
+reflection:
+  test_timeout_seconds: 120
+  junit_version: "5"
+  use_testcontainers: true
+
+# Evolution (進化) Settings
+evolution:
+  max_lines_per_fix: 500
+  enable_openrewrite: true
+  default_recipes:
+    - common-static-analysis
+    - security-best-practices
+
+# Governance (統治) Settings
+governance:
+  blast_radius:
+    auto_merge_threshold: 0.3
+    medium_risk_threshold: 0.6
+    high_risk_threshold: 0.8
+  pr:
+    auto_label: true
+    labels:
+      - kintsugi-helix
+      - automated-fix
+    require_tests: true
+
+# Logging
+logging:
+  level: INFO
+  format: json
+  include_timestamp: true

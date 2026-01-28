@@ -1,0 +1,50 @@
+# Docker Compose for local development
+version: '3.8'
+
+services:
+  # Target Spring Boot application
+  target-app:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - LOGGING_LEVEL_COM_KINTSUGI=DEBUG
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - kintsugi-network
+
+  # Kintsugi Agent
+  agent:
+    build:
+      context: ./agent-core
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-demo-project}
+      - VERTEX_AI_LOCATION=us-central1
+      - LOG_FILTER=severity>=ERROR
+      - AUTO_MERGE_THRESHOLD=0.3
+      - DRY_RUN=true
+      - MODE=dev
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/gcp-key.json
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./target-app:/app/target-app:rw
+    depends_on:
+      target-app:
+        condition: service_healthy
+    networks:
+      - kintsugi-network
+
+networks:
+  kintsugi-network:
+    driver: bridge

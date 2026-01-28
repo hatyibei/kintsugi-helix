@@ -1,0 +1,34 @@
+# Kintsugi-Helix Agent Core Dependencies
+
+# Google Cloud
+google-cloud-aiplatform>=1.38.0
+google-cloud-logging>=3.8.0
+google-cloud-run>=0.10.0
+google-auth>=2.23.0
+
+# Vertex AI / Generative AI
+vertexai>=1.38.0
+
+# Web & API
+httpx>=0.25.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Data & Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+pyyaml>=6.0.1
+
+# Git Operations
+gitpython>=3.1.40
+
+# Utilities
+python-dotenv>=1.0.0
+structlog>=23.2.0
+tenacity>=8.2.3
+rich>=13.6.0
+
+# Testing (also in requirements-dev.txt)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
