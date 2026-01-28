@@ -183,3 +183,133 @@ class GitHelper:
             return blob.data_stream.read().decode("utf-8")
         except (KeyError, GitCommandError):
             return None
+
+    def checkout(self, branch_name: str) -> bool:
+        """Checkout a branch (alias for checkout_branch).
+
+        Args:
+            branch_name: Name of the branch to checkout.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        return self.checkout_branch(branch_name)
+
+    def reset_hard(self, ref: str = "HEAD") -> bool:
+        """Reset the working directory to a specific ref, discarding all changes.
+
+        Args:
+            ref: Git ref to reset to. Default is HEAD.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            self.repo.git.reset("--hard", ref)
+            logger.info("Hard reset performed", ref=ref)
+            return True
+        except GitCommandError as e:
+            logger.error("Failed to perform hard reset", ref=ref, error=str(e))
+            return False
+
+    def merge(self, branch_name: str, message: str | None = None) -> bool:
+        """Merge a branch into the current branch.
+
+        Args:
+            branch_name: Name of the branch to merge.
+            message: Optional merge commit message.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            if message:
+                self.repo.git.merge(branch_name, "-m", message)
+            else:
+                self.repo.git.merge(branch_name)
+            logger.info("Branch merged", branch=branch_name)
+            return True
+        except GitCommandError as e:
+            logger.error("Failed to merge branch", branch=branch_name, error=str(e))
+            return False
+
+    def stash(self, message: str | None = None) -> bool:
+        """Stash current changes.
+
+        Args:
+            message: Optional stash message.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            if message:
+                self.repo.git.stash("push", "-m", message)
+            else:
+                self.repo.git.stash("push")
+            logger.info("Changes stashed", message=message)
+            return True
+        except GitCommandError as e:
+            logger.error("Failed to stash changes", error=str(e))
+            return False
+
+    def stash_pop(self) -> bool:
+        """Pop the most recent stash.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            self.repo.git.stash("pop")
+            logger.info("Stash popped")
+            return True
+        except GitCommandError as e:
+            logger.error("Failed to pop stash", error=str(e))
+            return False
+
+    def delete_branch(self, branch_name: str, force: bool = False) -> bool:
+        """Delete a branch.
+
+        Args:
+            branch_name: Name of the branch to delete.
+            force: Force delete even if not merged.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        try:
+            flag = "-D" if force else "-d"
+            self.repo.git.branch(flag, branch_name)
+            logger.info("Branch deleted", branch=branch_name, force=force)
+            return True
+        except GitCommandError as e:
+            logger.error("Failed to delete branch", branch=branch_name, error=str(e))
+            return False
+
+    def has_uncommitted_changes(self) -> bool:
+        """Check if there are uncommitted changes.
+
+        Returns:
+            bool: True if there are uncommitted changes.
+        """
+        return self.repo.is_dirty(untracked_files=True)
+
+    def get_commit_log(self, max_count: int = 10) -> list[dict]:
+        """Get recent commit log.
+
+        Args:
+            max_count: Maximum number of commits to return.
+
+        Returns:
+            list[dict]: List of commit info dicts with sha, message, author, date.
+        """
+        commits = []
+        for commit in self.repo.iter_commits(max_count=max_count):
+            commits.append({
+                "sha": commit.hexsha,
+                "short_sha": commit.hexsha[:8],
+                "message": commit.message.strip(),
+                "author": str(commit.author),
+                "date": commit.committed_datetime.isoformat(),
+            })
+        return commits
