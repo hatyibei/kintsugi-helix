@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from src.evolution.code_fixer import CodeFixer
+from src.evolution.code_fixer import CodeFixer, FixFeedback
+from src.evolution.learning_memory import LearningMemory
 from src.evolution.openrewrite_executor import OpenRewriteExecutor
 from src.governance.blast_radius import BlastRadiusAnalyzer
 from src.governance.pr_manager import PRManager
@@ -71,6 +73,9 @@ class FixVerifyResult:
     fixes: list[Any]
     attempts: int
     error_message: str | None = None
+    start_time: datetime | None = None
+    incident_signature: str | None = None
+    feedback_history: list[FixFeedback] | None = None
 
 
 class KintsugiAgent:
@@ -113,7 +118,17 @@ class KintsugiAgent:
         # Git
         self.git = GitHelper(self.target_path)
 
-        logger.info("KintsugiAgent initialized", target=str(self.target_path))
+        # Learning Memory (免疫記憶) - Antifragile knowledge persistence
+        self.learning_memory = LearningMemory(
+            project_path=self.target_path,
+            vertex_client=self.vertex_client,
+        )
+
+        logger.info(
+            "KintsugiAgent initialized",
+            target=str(self.target_path),
+            knowledge_entries=len(self.learning_memory.knowledge.entries),
+        )
 
     async def run(self, incident_id: str | None = None) -> dict:
         """Run the full agent workflow.
@@ -137,6 +152,7 @@ class KintsugiAgent:
             "fixes_applied": 0,
             "prs_created": 0,
             "auto_merged": 0,
+            "learnings_recorded": 0,
         }
 
         with Progress(
@@ -180,6 +196,7 @@ class KintsugiAgent:
                     continue
 
                 results["fixes_applied"] += len(fix_result.fixes)
+                results["learnings_recorded"] += len(fix_result.fixes)
 
                 # Phase 3: Governance (統治)
                 task = progress.add_task(
@@ -196,17 +213,28 @@ class KintsugiAgent:
                 progress.update(task, completed=True)
 
         # Summary
+        knowledge_summary = self.learning_memory.get_summary()
         console.print("\n")
         console.print(
             Panel(
                 f"""[bold]Results Summary[/bold]
 
-Incidents Found: {results['incidents_found']}
-Bugs Confirmed: {results['bugs_confirmed']}
-Fixes Applied: {results['fixes_applied']}
-PRs Created: {results['prs_created']}
-Auto-merged: {results['auto_merged']}""",
-                title="Kintsugi-Helix Complete",
+[cyan]Detection (感知)[/cyan]
+  Incidents Found: {results['incidents_found']}
+  Bugs Confirmed: {results['bugs_confirmed']}
+
+[magenta]Repair (反射 + 進化)[/magenta]
+  Fixes Applied: {results['fixes_applied']}
+  PRs Created: {results['prs_created']}
+  Auto-merged: {results['auto_merged']}
+
+[yellow]Learning (免疫記憶)[/yellow]
+  Total Learnings: {knowledge_summary['total_learnings']}
+  Bug Patterns Known: {len(knowledge_summary['bug_types_seen'])}
+  Anti-patterns Recorded: {knowledge_summary['anti_patterns_count']}
+  Prompt Tips: {knowledge_summary['prompt_tips_count']}""",
+                title="[bold green]Kintsugi-Helix Complete 金継ぎ[/bold green]",
+                subtitle="Antifragile: Getting stronger from each repair",
                 border_style="green",
             )
         )
@@ -331,12 +359,15 @@ Auto-merged: {results['auto_merged']}""",
         Returns:
             FixVerifyResult: Complete result of the fix-verify cycle.
         """
+        start_time = datetime.now()
+        incident_signature = incident.get("signature", "unknown")
+
         logger.info(
             "Starting reflection phase with fix-verify loop (反射)",
-            incident=incident["signature"],
+            incident=incident_signature,
         )
 
-        # Initialize result
+        # Initialize result with tracking fields
         result = FixVerifyResult(
             success=False,
             bug_confirmed=False,
@@ -346,6 +377,9 @@ Auto-merged: {results['auto_merged']}""",
             analysis=None,
             fixes=[],
             attempts=0,
+            start_time=start_time,
+            incident_signature=incident_signature,
+            feedback_history=[],
         )
 
         # Step 1: Analyze root cause with auto source extraction
@@ -406,10 +440,19 @@ Auto-merged: {results['auto_merged']}""",
                 )
 
                 # Provide feedback to regenerate fix
-                feedback = self.test_runner.get_test_output_for_feedback(fix_result)
+                feedback_text = self.test_runner.get_test_output_for_feedback(fix_result)
                 analysis = await self._enhance_analysis_with_feedback(
-                    analysis, feedback, "fix_failed"
+                    analysis, feedback_text, "fix_failed"
                 )
+
+                # Track feedback for learning
+                feedback_entry = FixFeedback(
+                    error_type="assertion",
+                    error_message=fix_result.error_message or feedback_text[:500],
+                    failed_test=test.test_method_name if test else None,
+                    stack_trace=fix_result.error_message,
+                )
+                result.feedback_history.append(feedback_entry)
 
                 # Revert the fix
                 if not self.settings.dry_run:
@@ -431,10 +474,19 @@ Auto-merged: {results['auto_merged']}""",
                 )
 
                 # Provide feedback about regression
-                feedback = f"Fix caused regression:\n{summary.raw_output[:2000]}"
+                feedback_text = f"Fix caused regression:\n{summary.raw_output[:2000]}"
                 analysis = await self._enhance_analysis_with_feedback(
-                    analysis, feedback, "regression"
+                    analysis, feedback_text, "regression"
                 )
+
+                # Track feedback for learning
+                feedback_entry = FixFeedback(
+                    error_type="regression",
+                    error_message=feedback_text[:500],
+                    failed_test=None,
+                    stack_trace=summary.raw_output[:1000] if summary.raw_output else None,
+                )
+                result.feedback_history.append(feedback_entry)
 
                 # Revert the fix
                 if not self.settings.dry_run:
@@ -446,17 +498,45 @@ Auto-merged: {results['auto_merged']}""",
             result.regression_passed = True
             result.success = True
 
+            # Record successful fix for learning (免疫学習)
+            if result.fixes and result.analysis:
+                for fix in result.fixes:
+                    # Attach feedback history to the fix for learning
+                    fix.feedback_history = result.feedback_history or []
+                    fix.attempt = fix_attempt
+
+                    self.learning_memory.record_successful_fix(
+                        analysis=result.analysis,
+                        fix=fix,
+                        incident_signature=incident_signature,
+                        start_time=start_time,
+                    )
+
             logger.info(
                 "Fix-verify loop succeeded",
                 attempt=fix_attempt,
                 fixes=len(fixes),
+                learning_recorded=True,
             )
 
             return result
 
-        # All retries exhausted
+        # All retries exhausted - record failure for learning (アンチパターン記録)
         result.error_message = f"Failed to generate working fix after {MAX_FIX_RETRIES} attempts"
-        logger.error("Fix-verify loop exhausted retries")
+
+        if result.analysis and result.feedback_history:
+            self.learning_memory.record_failed_fix(
+                analysis=result.analysis,
+                feedback_history=result.feedback_history,
+                incident_signature=incident_signature,
+                reason=result.error_message,
+            )
+
+        logger.error(
+            "Fix-verify loop exhausted retries",
+            attempts=MAX_FIX_RETRIES,
+            learning_recorded=True,
+        )
 
         return result
 
@@ -646,12 +726,20 @@ Auto-merged: {results['auto_merged']}""",
         Returns:
             dict: Governance results.
         """
-        logger.info("Starting governance phase")
+        logger.info("Starting governance phase (統治)")
 
-        result = {"pr_created": False, "auto_merged": False}
+        result = {"pr_created": False, "auto_merged": False, "knowledge_committed": False}
 
         # Analyze blast radius
         analysis = await self.blast_analyzer.analyze(fixes)
+
+        # Generate Mermaid diagram for documentation
+        mermaid_graph = self.blast_analyzer.to_mermaid_graph(analysis)
+        logger.debug("Generated blast radius visualization", diagram_length=len(mermaid_graph))
+
+        # Save accumulated knowledge (免疫記憶の保存)
+        await self._save_and_commit_knowledge()
+        result["knowledge_committed"] = True
 
         if self.blast_analyzer.should_auto_merge(analysis):
             # Low risk - auto merge
@@ -689,6 +777,65 @@ Auto-merged: {results['auto_merged']}""",
 
         logger.info("Governance phase complete", result=result)
         return result
+
+    async def _save_and_commit_knowledge(self) -> None:
+        """Save learning memory and commit knowledge files.
+
+        This implements the 'DNA preservation' process - the agent
+        commits what it has learned to the repository itself.
+        """
+        logger.info("Saving learning memory (免疫記憶の永続化)")
+
+        # Generate insights from accumulated knowledge
+        if len(self.learning_memory.knowledge.entries) >= 3:
+            try:
+                insights = await self.learning_memory.generate_insights()
+                logger.info(
+                    "Generated insights from knowledge",
+                    tips_count=len(insights.get("prompt_tips", [])),
+                )
+            except Exception as e:
+                logger.warning("Failed to generate insights", error=str(e))
+
+        # Save knowledge files
+        self.learning_memory.save()
+        self.learning_memory.save_prompt_tips()
+
+        # Auto-commit knowledge files to preserve learned wisdom
+        if not self.settings.dry_run:
+            knowledge_files = [
+                LearningMemory.KNOWLEDGE_FILE,
+                LearningMemory.PROMPT_TIPS_FILE,
+            ]
+
+            # Check if files exist and have changes
+            files_to_commit = []
+            for f in knowledge_files:
+                file_path = self.target_path / f
+                if file_path.exists():
+                    files_to_commit.append(f)
+
+            if files_to_commit:
+                try:
+                    self.git.stage_files(files_to_commit)
+
+                    # Check if there are staged changes
+                    if self.git.has_uncommitted_changes():
+                        summary = self.learning_memory.get_summary()
+                        self.git.commit(
+                            f"chore(kintsugi): update learning memory\n\n"
+                            f"Total fixes: {summary['total_fixes']}\n"
+                            f"Total learnings: {summary['total_learnings']}\n"
+                            f"Bug types: {', '.join(summary['bug_types_seen'][:5])}\n\n"
+                            f"Auto-committed by Kintsugi-Helix immune system"
+                        )
+                        logger.info(
+                            "Knowledge files committed",
+                            files=files_to_commit,
+                            total_learnings=summary["total_learnings"],
+                        )
+                except Exception as e:
+                    logger.warning("Failed to commit knowledge files", error=str(e))
 
 
 def parse_args() -> argparse.Namespace:
