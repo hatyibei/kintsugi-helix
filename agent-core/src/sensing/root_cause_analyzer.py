@@ -816,3 +816,312 @@ Provide your analysis in structured JSON format."""
         )
 
         return await self.analyze_incident(incident, source_files=all_sources)
+
+    async def autonomous_explore_and_analyze(
+        self,
+        incident: dict[str, Any],
+        max_exploration_depth: int = 2,
+        max_files: int = 15,
+    ) -> RootCauseAnalysis:
+        """Autonomously explore the codebase and analyze the incident.
+
+        This method implements true autonomous exploration:
+        1. Parse stack trace to identify initial suspicious files
+        2. Ask Gemini to identify additional files to explore
+        3. Recursively explore and fetch relevant files
+        4. Build comprehensive context for final analysis
+
+        No human file list needed - the agent discovers everything itself.
+
+        Args:
+            incident: Incident data from LogCollector.
+            max_exploration_depth: Maximum recursive exploration depth.
+            max_files: Maximum number of files to include in analysis.
+
+        Returns:
+            RootCauseAnalysis: Comprehensive analysis results.
+        """
+        if not self.source_extractor or not self.target_repo_path:
+            logger.warning("No target repo, falling back to basic analysis")
+            return await self.analyze_incident(incident)
+
+        logger.info(
+            "Starting autonomous exploration",
+            signature=incident.get("signature"),
+            max_depth=max_exploration_depth,
+        )
+
+        # Phase 1: Initial file discovery from stack trace
+        stack_trace = incident.get("trace", "")
+        internal_frames = StackTraceParser.extract_internal_frames(stack_trace)
+
+        discovered_files: dict[str, str] = {}
+        explored_paths: set[str] = set()
+
+        # Get initial sources from stack trace
+        if internal_frames:
+            initial_sources = self.source_extractor.get_sources_for_frames(
+                internal_frames, max_files=5
+            )
+            discovered_files.update(initial_sources)
+            explored_paths.update(initial_sources.keys())
+            logger.info(
+                "Phase 1: Stack trace files discovered",
+                count=len(initial_sources),
+            )
+
+        # Phase 2: AI-guided exploration
+        for depth in range(max_exploration_depth):
+            if len(discovered_files) >= max_files:
+                break
+
+            # Ask Gemini what other files might be relevant
+            suggestions = await self._ask_gemini_for_file_suggestions(
+                incident=incident,
+                current_files=discovered_files,
+                explored_paths=explored_paths,
+            )
+
+            if not suggestions:
+                logger.info(f"No more suggestions at depth {depth}")
+                break
+
+            # Explore suggested files
+            new_files_found = 0
+            for suggestion in suggestions:
+                if len(discovered_files) >= max_files:
+                    break
+
+                file_path = self._resolve_file_path(suggestion)
+                if file_path and file_path not in explored_paths:
+                    explored_paths.add(file_path)
+                    content = self._read_file(file_path)
+                    if content:
+                        discovered_files[file_path] = content
+                        new_files_found += 1
+
+                        # Also explore imports of newly discovered files
+                        imports = self.source_extractor.extract_imports(content)
+                        for imp in imports:
+                            if imp.startswith("com.kintsugi.demo"):
+                                imp_path = f"src/main/java/{imp.replace('.', '/')}.java"
+                                if imp_path not in explored_paths:
+                                    explored_paths.add(imp_path)
+                                    imp_content = self._read_file(imp_path)
+                                    if imp_content and len(discovered_files) < max_files:
+                                        discovered_files[imp_path] = imp_content
+
+            logger.info(
+                f"Phase 2 depth {depth}: AI exploration",
+                new_files=new_files_found,
+                total_files=len(discovered_files),
+            )
+
+            if new_files_found == 0:
+                break
+
+        # Phase 3: Comprehensive analysis with all discovered context
+        logger.info(
+            "Phase 3: Final analysis",
+            total_files=len(discovered_files),
+            explored_paths=len(explored_paths),
+        )
+
+        return await self.analyze_incident(incident, source_files=discovered_files)
+
+    async def _ask_gemini_for_file_suggestions(
+        self,
+        incident: dict[str, Any],
+        current_files: dict[str, str],
+        explored_paths: set[str],
+    ) -> list[str]:
+        """Ask Gemini to suggest additional files to explore.
+
+        Args:
+            incident: Incident data.
+            current_files: Currently discovered files.
+            explored_paths: Already explored paths.
+
+        Returns:
+            list[str]: Suggested file paths or class names.
+        """
+        # Build context summary
+        file_list = "\n".join([f"- {path}" for path in current_files.keys()])
+
+        # Extract class signatures for context
+        class_info = []
+        for path, content in list(current_files.items())[:5]:
+            sig = self.source_extractor.get_class_signature(content)
+            imports = self.source_extractor.extract_imports(content)[:5]
+            class_info.append(f"{path}:\n  Signature: {sig}\n  Imports: {imports}")
+
+        prompt = f"""You are investigating a Java application error. Based on the error and files already examined, suggest additional files that should be explored.
+
+## Error Information
+- Message: {incident.get('message', 'N/A')[:500]}
+- Exception Type: {StackTraceParser.extract_exception_info(incident.get('trace', ''))[0]}
+
+## Stack Trace (partial)
+{incident.get('trace', 'N/A')[:1000]}
+
+## Files Already Examined
+{file_list}
+
+## Class Information
+{chr(10).join(class_info[:5])}
+
+## Task
+Suggest up to 5 additional files/classes that should be explored to understand:
+1. Data flow that led to the error
+2. Configuration or dependency that might be misconfigured
+3. Related service/repository classes that interact with the error location
+4. Model/entity classes that might have null fields
+
+Return ONLY Java class names or file paths, one per line. Focus on internal classes (com.kintsugi.demo.*).
+If no more exploration is needed, return "NONE".
+
+Example output:
+com.kintsugi.demo.repository.UserRepository
+com.kintsugi.demo.model.User
+com.kintsugi.demo.config.SecurityConfig"""
+
+        try:
+            response = await self.vertex_client.generate_text(
+                prompt=prompt,
+                temperature=0.3,
+                max_tokens=500,
+            )
+
+            if "NONE" in response.upper():
+                return []
+
+            # Parse suggestions
+            suggestions = []
+            for line in response.strip().split("\n"):
+                line = line.strip().lstrip("- ").lstrip("* ")
+                if line and not line.startswith("#") and "NONE" not in line.upper():
+                    # Skip if already explored
+                    resolved = self._resolve_file_path(line)
+                    if resolved and resolved not in explored_paths:
+                        suggestions.append(line)
+
+            return suggestions[:5]
+
+        except Exception as e:
+            logger.warning("Failed to get file suggestions from Gemini", error=str(e))
+            return []
+
+    def _resolve_file_path(self, suggestion: str) -> str | None:
+        """Resolve a class name or path to a file path.
+
+        Args:
+            suggestion: Class name or file path.
+
+        Returns:
+            str | None: Resolved file path or None.
+        """
+        # If it's already a path
+        if suggestion.endswith(".java"):
+            return suggestion
+
+        # Convert class name to path
+        # com.kintsugi.demo.service.UserService -> src/main/java/com/kintsugi/demo/service/UserService.java
+        if "." in suggestion:
+            path = f"src/main/java/{suggestion.replace('.', '/')}.java"
+            return path
+
+        return None
+
+    def _read_file(self, file_path: str) -> str | None:
+        """Read a file from the target repository.
+
+        Args:
+            file_path: Relative path to the file.
+
+        Returns:
+            str | None: File content or None.
+        """
+        if not self.target_repo_path:
+            return None
+
+        full_path = self.target_repo_path / file_path
+        if full_path.exists():
+            try:
+                return full_path.read_text()
+            except Exception as e:
+                logger.warning("Failed to read file", path=file_path, error=str(e))
+        return None
+
+    def discover_project_structure(self) -> dict[str, Any]:
+        """Discover and return the project structure.
+
+        Useful for understanding the codebase layout.
+
+        Returns:
+            dict: Project structure information.
+        """
+        if not self.target_repo_path:
+            return {}
+
+        structure = {
+            "controllers": [],
+            "services": [],
+            "repositories": [],
+            "models": [],
+            "config": [],
+            "other": [],
+        }
+
+        java_root = self.target_repo_path / "src" / "main" / "java"
+        if not java_root.exists():
+            return structure
+
+        for java_file in java_root.rglob("*.java"):
+            rel_path = str(java_file.relative_to(self.target_repo_path))
+            name = java_file.stem
+
+            # Categorize based on naming conventions and path
+            if "controller" in rel_path.lower() or name.endswith("Controller"):
+                structure["controllers"].append(rel_path)
+            elif "service" in rel_path.lower() or name.endswith("Service"):
+                structure["services"].append(rel_path)
+            elif "repository" in rel_path.lower() or name.endswith("Repository"):
+                structure["repositories"].append(rel_path)
+            elif "model" in rel_path.lower() or "entity" in rel_path.lower():
+                structure["models"].append(rel_path)
+            elif "config" in rel_path.lower() or name.endswith("Config"):
+                structure["config"].append(rel_path)
+            else:
+                structure["other"].append(rel_path)
+
+        return structure
+
+    async def analyze_autonomously(
+        self,
+        incident: dict[str, Any],
+    ) -> RootCauseAnalysis:
+        """Fully autonomous analysis - the preferred entry point.
+
+        This is the main method for autonomous operation. It:
+        1. Discovers relevant files without human input
+        2. Explores the codebase following the error trail
+        3. Builds comprehensive context for Gemini
+        4. Returns detailed analysis with high confidence
+
+        Args:
+            incident: Incident data from LogCollector.
+
+        Returns:
+            RootCauseAnalysis: Complete autonomous analysis.
+        """
+        logger.info(
+            "Starting fully autonomous analysis",
+            signature=incident.get("signature"),
+        )
+
+        # Use the exploration-based analysis
+        return await self.autonomous_explore_and_analyze(
+            incident=incident,
+            max_exploration_depth=2,
+            max_files=12,
+        )

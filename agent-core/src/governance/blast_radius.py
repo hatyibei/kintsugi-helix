@@ -742,3 +742,173 @@ Provide a comprehensive analysis with specific details."""
             report["detailed"] = result.detailed_analysis
 
         return report
+
+    def to_mermaid_graph(self, result: BlastRadiusResult) -> str:
+        """Generate a Mermaid diagram from blast radius analysis.
+
+        Creates a visual representation of the impact analysis
+        for documentation and presentations.
+
+        Args:
+            result: Blast radius analysis result.
+
+        Returns:
+            str: Mermaid diagram code.
+        """
+        lines = ["```mermaid", "graph TD"]
+
+        # Define styles based on risk level
+        lines.append("    %% Style definitions")
+        lines.append("    classDef modified fill:#ff6b6b,stroke:#c92a2a,color:#fff")
+        lines.append("    classDef impacted fill:#ffd43b,stroke:#fab005,color:#000")
+        lines.append("    classDef safe fill:#69db7c,stroke:#37b24d,color:#000")
+        lines.append("    classDef endpoint fill:#748ffc,stroke:#4c6ef5,color:#fff")
+        lines.append("    classDef feature fill:#f783ac,stroke:#e64980,color:#fff")
+        lines.append("")
+
+        # Add central node (modified class)
+        if result.dependency_graph:
+            target = result.dependency_graph.target_class
+            target_id = self._sanitize_id(target)
+            target_short = target.split(".")[-1]
+            lines.append(f"    %% Modified class")
+            lines.append(f'    {target_id}["{target_short}<br/>📝 MODIFIED"]')
+            lines.append(f"    class {target_id} modified")
+            lines.append("")
+
+            # Add imports (classes this depends on)
+            if result.dependency_graph.imports:
+                lines.append("    %% Dependencies (imports)")
+                for imp in result.dependency_graph.imports:
+                    if imp.is_internal:
+                        imp_id = self._sanitize_id(imp.class_name)
+                        imp_short = imp.class_name.split(".")[-1]
+                        lines.append(f'    {imp_id}["{imp_short}"]')
+                        lines.append(f"    {target_id} --> {imp_id}")
+                        lines.append(f"    class {imp_id} safe")
+                lines.append("")
+
+            # Add importers (classes that depend on this)
+            if result.dependency_graph.imported_by:
+                lines.append("    %% Impacted classes (imported by)")
+                for importer in result.dependency_graph.imported_by:
+                    imp_id = self._sanitize_id(importer.class_name)
+                    imp_short = importer.class_name.split(".")[-1]
+                    lines.append(f'    {imp_id}["{imp_short}<br/>⚠️ IMPACTED"]')
+                    lines.append(f"    {imp_id} --> {target_id}")
+                    lines.append(f"    class {imp_id} impacted")
+                lines.append("")
+
+        # Add business impact
+        if result.business_impact:
+            lines.append("    %% Business Impact")
+
+            # Add affected endpoints
+            for i, endpoint in enumerate(result.business_impact.affected_endpoints[:5]):
+                ep_id = f"endpoint_{i}"
+                # Escape special characters
+                ep_display = endpoint.replace('"', "'")
+                lines.append(f'    {ep_id}("{ep_display}")')
+                lines.append(f"    class {ep_id} endpoint")
+
+                # Connect to impacted classes
+                if result.dependency_graph and result.dependency_graph.imported_by:
+                    for importer in result.dependency_graph.imported_by[:2]:
+                        imp_id = self._sanitize_id(importer.class_name)
+                        lines.append(f"    {imp_id} -.-> {ep_id}")
+
+            lines.append("")
+
+            # Add affected features
+            for i, feature in enumerate(result.business_impact.affected_features[:5]):
+                feat_id = f"feature_{i}"
+                lines.append(f'    {feat_id}{{{{{feature}}}}}')
+                lines.append(f"    class {feat_id} feature")
+
+        # Add legend
+        lines.append("")
+        lines.append("    %% Legend")
+        lines.append('    subgraph Legend[" Legend "]')
+        lines.append('        L1["📝 Modified"]')
+        lines.append('        L2["⚠️ Impacted"]')
+        lines.append('        L3["✅ Safe"]')
+        lines.append("    end")
+        lines.append("    class L1 modified")
+        lines.append("    class L2 impacted")
+        lines.append("    class L3 safe")
+
+        lines.append("```")
+
+        return "\n".join(lines)
+
+    def to_mermaid_flowchart(self, result: BlastRadiusResult) -> str:
+        """Generate a simpler flowchart-style Mermaid diagram.
+
+        Args:
+            result: Blast radius analysis result.
+
+        Returns:
+            str: Mermaid flowchart code.
+        """
+        lines = ["```mermaid", "flowchart LR"]
+
+        # Risk level indicator
+        risk_emoji = {
+            "low": "🟢",
+            "medium": "🟡",
+            "high": "🟠",
+            "critical": "🔴",
+        }
+        risk = risk_emoji.get(result.risk_level, "⚪")
+
+        lines.append(f"    subgraph Risk[Risk: {risk} {result.risk_level.upper()}]")
+        lines.append(f"        score[Score: {result.score:.2f}]")
+        lines.append(f"        files[Files: {result.files_affected}]")
+        lines.append("    end")
+        lines.append("")
+
+        # Modified component
+        if result.dependency_graph:
+            target_short = result.dependency_graph.target_class.split(".")[-1]
+            lines.append(f'    modified[("🔧 {target_short}")]')
+
+            # Impact chain
+            lines.append("    modified --> impact")
+            lines.append(f'    impact{{"Impacts {len(result.dependency_graph.imported_by)} classes"}}')
+
+        # Business impact summary
+        if result.business_impact:
+            features = len(result.business_impact.affected_features)
+            endpoints = len(result.business_impact.affected_endpoints)
+            lines.append(f'    impact --> features["{features} Features"]')
+            lines.append(f'    impact --> endpoints["{endpoints} Endpoints"]')
+
+            # Data risk
+            data_risk = result.business_impact.data_integrity_risk
+            if data_risk in ["medium", "high"]:
+                lines.append(f'    impact --> data_risk["⚠️ Data Risk: {data_risk}"]')
+
+        # Recommendation
+        rec_emoji = {
+            "auto_merge": "✅",
+            "fast_review": "👀",
+            "full_review": "🔍",
+        }
+        rec = rec_emoji.get(result.recommendation, "❓")
+        lines.append(f'    Risk --> recommendation["{rec} {result.recommendation}"]')
+
+        lines.append("```")
+
+        return "\n".join(lines)
+
+    def _sanitize_id(self, name: str) -> str:
+        """Sanitize a name for use as Mermaid node ID.
+
+        Args:
+            name: Original name.
+
+        Returns:
+            str: Sanitized ID.
+        """
+        # Replace dots and special chars with underscores
+        return name.replace(".", "_").replace("-", "_").replace(" ", "_")
