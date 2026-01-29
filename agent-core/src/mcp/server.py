@@ -1,9 +1,11 @@
 """MCP Server implementation for Kintsugi-Helix.
 
 Exposes agent capabilities via the Model Context Protocol.
-Provides structured outputs for incident analysis and code context retrieval.
+Provides structured outputs for incident analysis, code context retrieval,
+and dependency graph exploration for external agents.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,7 @@ import structlog
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from src.governance.blast_radius import BlastRadiusAnalyzer, ImportGraphAnalyzer
 from src.sensing.log_collector import LogCollector
 from src.sensing.root_cause_analyzer import (
     RootCauseAnalyzer,
@@ -110,6 +113,7 @@ class GetCodeContextRequest(BaseModel):
     repo_path: str = Field(description="Path to the repository root")
     include_imports: bool = Field(default=True, description="Include import analysis")
     include_signatures: bool = Field(default=True, description="Include method signatures")
+    include_dependencies: bool = Field(default=True, description="Include dependency graph")
     context_line: int | None = Field(default=None, description="Line number to highlight")
     context_range: int = Field(default=10, description="Lines of context around highlighted line")
 
@@ -128,6 +132,16 @@ class MethodSignature(BaseModel):
     signature: str = Field(description="Full method signature")
 
 
+class DependencyInfo(BaseModel):
+    """Information about class dependencies."""
+
+    target_class: str = Field(description="The class being analyzed")
+    imports: list[ImportInfo] = Field(default_factory=list, description="Classes this imports")
+    imported_by: list[ImportInfo] = Field(
+        default_factory=list, description="Classes that import this"
+    )
+
+
 class GetCodeContextResponse(BaseModel):
     """Response with code context."""
 
@@ -139,6 +153,31 @@ class GetCodeContextResponse(BaseModel):
     imports: list[ImportInfo] = Field(default_factory=list, description="Import information")
     method_signatures: list[MethodSignature] = Field(
         default_factory=list, description="Method signatures"
+    )
+    dependencies: DependencyInfo | None = Field(
+        default=None, description="Dependency graph information"
+    )
+    error: str | None = Field(default=None, description="Error message if failed")
+
+
+class GetDependencyGraphRequest(BaseModel):
+    """Request to get dependency graph for files."""
+
+    file_paths: list[str] = Field(description="Paths to source files (relative to repo root)")
+    repo_path: str = Field(description="Path to the repository root")
+    include_source: bool = Field(default=False, description="Include source code of dependencies")
+    max_depth: int = Field(default=1, ge=1, le=3, description="Maximum dependency depth")
+
+
+class DependencyGraphResponse(BaseModel):
+    """Response with dependency graph."""
+
+    success: bool = Field(description="Whether analysis was successful")
+    graphs: dict[str, DependencyInfo] = Field(
+        default_factory=dict, description="Dependency graphs per file"
+    )
+    related_sources: dict[str, str] = Field(
+        default_factory=dict, description="Source code of related files"
     )
     error: str | None = Field(default=None, description="Error message if failed")
 
@@ -176,6 +215,7 @@ class MCPServer:
     Provides tools for:
     - Incident analysis with source code context
     - Code context retrieval with dependency analysis
+    - Dependency graph exploration
     - Log searching and filtering
     """
 
@@ -195,7 +235,7 @@ class MCPServer:
         self.app = FastAPI(
             title="Kintsugi-Helix MCP Server",
             description="Model Context Protocol server for autonomous maintenance",
-            version="0.2.0",
+            version="0.3.0",
         )
         self._setup_routes()
         self._initialized = False
@@ -215,7 +255,7 @@ class MCPServer:
             }
             return HealthResponse(
                 status="healthy",
-                version="0.2.0",
+                version="0.3.0",
                 components=components,
             )
 
@@ -287,8 +327,8 @@ class MCPServer:
         ) -> GetCodeContextResponse:
             """Get source code context for a file.
 
-            Returns source code along with import analysis and method signatures.
-            Useful for understanding code dependencies before making changes.
+            Returns source code along with import analysis, method signatures,
+            and dependency information. Enables active exploration by external agents.
             """
             try:
                 repo_path = Path(request.repo_path)
@@ -354,6 +394,35 @@ class MCPServer:
                     sigs = extractor.get_method_signatures(source_code)
                     method_signatures = [MethodSignature(signature=s) for s in sigs]
 
+                # Get dependency graph if requested
+                dependencies = None
+                if request.include_dependencies:
+                    import_analyzer = ImportGraphAnalyzer(repo_path)
+                    graph = import_analyzer.analyze_class(request.file_path)
+
+                    dep_imports = [
+                        ImportInfo(
+                            class_name=r.class_name,
+                            is_internal=r.is_internal,
+                            source_path=r.file_path,
+                        )
+                        for r in graph.imports
+                    ]
+                    dep_imported_by = [
+                        ImportInfo(
+                            class_name=r.class_name,
+                            is_internal=r.is_internal,
+                            source_path=r.file_path,
+                        )
+                        for r in graph.imported_by
+                    ]
+
+                    dependencies = DependencyInfo(
+                        target_class=graph.target_class,
+                        imports=dep_imports,
+                        imported_by=dep_imported_by,
+                    )
+
                 return GetCodeContextResponse(
                     success=True,
                     file_path=request.file_path,
@@ -362,6 +431,7 @@ class MCPServer:
                     class_signature=class_signature,
                     imports=imports,
                     method_signatures=method_signatures,
+                    dependencies=dependencies,
                 )
 
             except Exception as e:
@@ -369,6 +439,73 @@ class MCPServer:
                 return GetCodeContextResponse(
                     success=False,
                     file_path=request.file_path,
+                    error=str(e),
+                )
+
+        @self.app.post("/tools/get-dependency-graph", response_model=DependencyGraphResponse)
+        async def get_dependency_graph(
+            request: GetDependencyGraphRequest,
+        ) -> DependencyGraphResponse:
+            """Get dependency graph for multiple files.
+
+            Analyzes import relationships to understand how changes
+            might ripple through the codebase.
+            """
+            try:
+                repo_path = Path(request.repo_path)
+                if not repo_path.exists():
+                    return DependencyGraphResponse(
+                        success=False,
+                        error=f"Repository path not found: {request.repo_path}",
+                    )
+
+                import_analyzer = ImportGraphAnalyzer(repo_path)
+                context = import_analyzer.get_full_context_for_analysis(
+                    request.file_paths,
+                    max_depth=request.max_depth,
+                )
+
+                # Convert to response format
+                graphs = {}
+                for file_path, graph_data in context.get("dependency_graphs", {}).items():
+                    dep_imports = [
+                        ImportInfo(
+                            class_name=i["class"],
+                            is_internal=i.get("internal", False),
+                            source_path=None,
+                        )
+                        for i in graph_data.get("imports", [])
+                    ]
+                    dep_imported_by = [
+                        ImportInfo(
+                            class_name=i["class"],
+                            is_internal=True,
+                            source_path=i.get("file"),
+                        )
+                        for i in graph_data.get("imported_by", [])
+                    ]
+
+                    graphs[file_path] = DependencyInfo(
+                        target_class=graph_data.get("class", file_path),
+                        imports=dep_imports,
+                        imported_by=dep_imported_by,
+                    )
+
+                # Include related sources if requested
+                related_sources = {}
+                if request.include_source:
+                    related_sources = context.get("related_sources", {})
+
+                return DependencyGraphResponse(
+                    success=True,
+                    graphs=graphs,
+                    related_sources=related_sources,
+                )
+
+            except Exception as e:
+                logger.error("Failed to get dependency graph", error=str(e))
+                return DependencyGraphResponse(
+                    success=False,
                     error=str(e),
                 )
 
@@ -418,6 +555,68 @@ class MCPServer:
                 logger.error("Failed to parse stack trace", error=str(e))
                 return {"success": False, "error": str(e)}
 
+        @self.app.post("/tools/explore-codebase")
+        async def explore_codebase(
+            repo_path: str,
+            query: str,
+            max_files: int = 10,
+        ) -> dict[str, Any]:
+            """Explore codebase with a natural language query.
+
+            Uses pattern matching to find relevant files and code.
+            """
+            try:
+                path = Path(repo_path)
+                if not path.exists():
+                    return {"success": False, "error": f"Path not found: {repo_path}"}
+
+                results = {
+                    "success": True,
+                    "query": query,
+                    "matches": [],
+                }
+
+                # Search for Java files
+                java_files = list(path.rglob("*.java"))[:50]
+
+                # Simple keyword search
+                keywords = query.lower().split()
+                scored_files = []
+
+                for java_file in java_files:
+                    try:
+                        content = java_file.read_text().lower()
+                        score = sum(1 for kw in keywords if kw in content)
+                        if score > 0:
+                            scored_files.append((java_file, score, content))
+                    except Exception:
+                        continue
+
+                # Sort by score and take top matches
+                scored_files.sort(key=lambda x: x[1], reverse=True)
+
+                for java_file, score, content in scored_files[:max_files]:
+                    rel_path = str(java_file.relative_to(path))
+                    # Find relevant lines
+                    relevant_lines = []
+                    for i, line in enumerate(content.split("\n"), 1):
+                        if any(kw in line for kw in keywords):
+                            relevant_lines.append({"line": i, "content": line.strip()[:100]})
+                            if len(relevant_lines) >= 5:
+                                break
+
+                    results["matches"].append({
+                        "file": rel_path,
+                        "score": score,
+                        "relevant_lines": relevant_lines,
+                    })
+
+                return results
+
+            except Exception as e:
+                logger.error("Failed to explore codebase", error=str(e))
+                return {"success": False, "error": str(e)}
+
         @self.app.get("/tools/list", response_model=ListToolsResponse)
         async def list_tools() -> ListToolsResponse:
             """List available MCP tools."""
@@ -440,17 +639,32 @@ class MCPServer:
                     ToolInfo(
                         name="get-code-context",
                         description=(
-                            "Get source code context for a file including imports "
-                            "and method signatures. Useful for understanding code "
-                            "dependencies before making changes."
+                            "Get source code context for a file including imports, "
+                            "method signatures, and dependency information. "
+                            "Enables active exploration by external agents."
                         ),
                         parameters={
                             "file_path": "Path to source file (relative to repo root)",
                             "repo_path": "Path to the repository root",
                             "include_imports": "Include import analysis (default: true)",
                             "include_signatures": "Include method signatures (default: true)",
+                            "include_dependencies": "Include dependency graph (default: true)",
                             "context_line": "Line number to highlight (optional)",
                             "context_range": "Lines of context around highlighted line (default: 10)",
+                        },
+                    ),
+                    ToolInfo(
+                        name="get-dependency-graph",
+                        description=(
+                            "Get dependency graph for multiple files. "
+                            "Analyzes import relationships to understand how changes "
+                            "might ripple through the codebase."
+                        ),
+                        parameters={
+                            "file_paths": "List of source file paths",
+                            "repo_path": "Path to the repository root",
+                            "include_source": "Include source code of dependencies (default: false)",
+                            "max_depth": "Maximum dependency depth (1-3, default: 1)",
                         },
                     ),
                     ToolInfo(
@@ -461,6 +675,18 @@ class MCPServer:
                         ),
                         parameters={
                             "stack_trace": "Raw Java stack trace string",
+                        },
+                    ),
+                    ToolInfo(
+                        name="explore-codebase",
+                        description=(
+                            "Explore codebase with a natural language query. "
+                            "Uses keyword matching to find relevant files and code."
+                        ),
+                        parameters={
+                            "repo_path": "Path to the repository root",
+                            "query": "Natural language search query",
+                            "max_files": "Maximum files to return (default: 10)",
                         },
                     ),
                 ]
