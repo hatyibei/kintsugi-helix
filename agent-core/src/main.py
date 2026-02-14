@@ -915,13 +915,8 @@ async def main() -> None:
         MAX_TEST_GENERATION_RETRIES = args.max_retries
 
     if args.serve:
-        # Start MCP server
-        import uvicorn
-
-        from src.mcp.server import create_app
-
-        app = create_app()
-        uvicorn.run(app, host="0.0.0.0", port=args.port)
+        # Start MCP server (handled in __main__ block to avoid event loop conflict)
+        raise RuntimeError("Server mode should be handled in __main__ block")
     else:
         # Run agent
         agent = KintsugiAgent(settings, args.target_path)
@@ -933,4 +928,14 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    
+    if args.serve:
+        # Start MCP server synchronously (no asyncio.run wrapper)
+        import uvicorn
+        from src.mcp.server import create_app
+        
+        app = create_app()
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
+    else:
+        asyncio.run(main())
