@@ -15,7 +15,7 @@ published: true
 
 ## デモ動画
 
-@[youtube](PLACEHOLDER_VIDEO_ID)
+@[youtube](e6lkxwWsad8)
 
 ## 金継ぎ（Kintsugi）とは
 
