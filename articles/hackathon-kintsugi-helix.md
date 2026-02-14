@@ -25,9 +25,9 @@ Kintsugi-Helixは、この哲学をソフトウェアに適用します：
 
 > ソフトウェアの障害は「隠すべき傷」ではなく「改善と進化の機会」
 
-## アーキテクチャ：4つの柱
+## アーキテクチャ：5つの柱
 
-Kintsugi-Helixは、4つの中核機能（柱）で構成されています。
+Kintsugi-Helixは、5つの中核機能（柱）で構成されています。
 
 ```mermaid
 graph TB
@@ -53,11 +53,14 @@ graph TB
         subgraph E["🧬 Evolution（進化）"]
             CF["Code Fixer"]
             OR["OpenRewrite"]
-            LM["Learning Memory"]
         end
         subgraph G["🏛️ Governance（統治）"]
             BR["Blast Radius Analyzer"]
             PM["PR Manager"]
+        end
+        subgraph L["📚 Learning（学習）"]
+            LM["Learning Memory"]
+            KB["Knowledge Base"]
         end
     end
 
@@ -178,7 +181,7 @@ class BlastRadiusResult:
 
 依存グラフを解析し、変更がどこまで波及するかをGeminiが判断。低リスクな修正は即座に適用し、高リスクな修正は人間のレビューを挟むことで、**自動化と安全性のバランス**を取っています。
 
-## 学習する免疫システム
+### 5. Learning（学習）- 免疫システム
 
 Kintsugi-Helixの特徴的な機能が**Learning Memory（免疫記憶）** です。
 
