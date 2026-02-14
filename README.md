@@ -1,203 +1,137 @@
-# Kintsugi-Helix
+# 🔧 Kintsugi-Helix — 自律型障害回復AIエージェント
 
-> **金継ぎ (Kintsugi)** - The Japanese art of repairing broken pottery with gold, treating breakage as part of the object's history.
+> **金継ぎ (Kintsugi)** — 壊れた陶器を金で修復し、破損の歴史を美として昇華させる日本の伝統技法。
+> Kintsugi-Helixは、この哲学をソフトウェアに適用します。**障害は「隠すべき傷」ではなく「改善と進化の機会」。**
 
-An autonomous maintenance engineer powered by Vertex AI (Gemini 2.5 Pro) that detects, analyzes, and repairs software defects in Java/Spring Boot applications.
+[![Demo](https://img.shields.io/badge/Live_Demo-Cloud_Run-4285F4?logo=googlecloud)](https://kintsugi-helix-agent-541617236229.asia-northeast1.run.app/demo/)
+[![YouTube](https://img.shields.io/badge/Demo_Video-YouTube-FF0000?logo=youtube)](https://youtu.be/e6lkxwWsad8)
+[![Gemini](https://img.shields.io/badge/Powered_by-Gemini_2.5_Pro-8E75B2?logo=google)](https://cloud.google.com/vertex-ai)
 
-## Overview
+## 🎬 Demo
 
-Kintsugi-Helix is an AI-driven system that implements the "Self-Healing Software" paradigm through four core capabilities:
+https://github.com/user-attachments/assets/demo
 
-| Phase | Japanese | Description |
-|-------|----------|-------------|
-| **Sensing** | 感知 (Kanchi) | Detects errors from Cloud Logging and performs root cause analysis |
-| **Reflection** | 反射 (Hansha) | Generates failing JUnit tests using Testcontainers to confirm bugs |
-| **Evolution** | 進化 (Shinka) | Applies fixes and structural improvements via OpenRewrite recipes |
-| **Governance** | 統治 (Tōchi) | Analyzes blast radius to determine auto-merge vs PR creation |
+[![Kintsugi-Helix Demo](https://img.youtube.com/vi/e6lkxwWsad8/maxresdefault.jpg)](https://youtu.be/e6lkxwWsad8)
 
-## Architecture
+**▶ [ライブデモを試す](https://kintsugi-helix-agent-541617236229.asia-northeast1.run.app/demo/)** — ブラウザからワンクリックで障害回復パイプライン全体をリアルタイムに体験できます。
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Kintsugi-Helix                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │   Sensing    │───▶│  Reflection  │───▶│  Evolution   │      │
-│  │  (感知)      │    │   (反射)     │    │   (進化)     │      │
-│  └──────────────┘    └──────────────┘    └──────────────┘      │
-│         │                   │                   │               │
-│         ▼                   ▼                   ▼               │
-│  ┌──────────────────────────────────────────────────────┐      │
-│  │                    Governance (統治)                  │      │
-│  │         Blast Radius Analysis & Auto-Merge            │      │
-│  └──────────────────────────────────────────────────────┘      │
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                     External Services                           │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
-│  │  Cloud     │ │  Vertex AI │ │  Cloud Run │ │  GitHub    │   │
-│  │  Logging   │ │  Gemini    │ │            │ │  API       │   │
-│  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
+## 💡 What Makes This Special?
 
-## Project Structure
+| 特徴 | 説明 |
+|------|------|
+| **完全自律** | 障害検知 → 根本原因分析 → テスト生成 → 修正 → 検証 → デプロイまで人間の介入ゼロ |
+| **Gemini 2.5 Pro** | 根本原因分析・テスト生成・コード修正の3箇所でVertex AIを活用 |
+| **安全第一** | Blast Radius分析で影響範囲を定量化し、閾値超えはPRで人間に判断を委ねる |
+| **知識の蓄積** | 修正パターンをナレッジベースに保存し、同種の障害に即座に対応 |
+| **MCP対応** | Model Context Protocolで外部AI Agentからの呼び出しに対応 |
+
+## 🏗️ Architecture — 5つの柱
 
 ```
-kintsugi-helix/
-├── agent-core/                  # Python agent implementation
-│   ├── src/
-│   │   ├── sensing/            # Error detection & RCA
-│   │   ├── reflection/         # Test generation
-│   │   ├── evolution/          # Code repair & refactoring
-│   │   ├── governance/         # Blast radius & PR management
-│   │   ├── mcp/               # Model Context Protocol server
-│   │   └── utils/             # Shared utilities
-│   ├── tests/                  # Agent test suite
-│   └── config/                 # Configuration files
-│
-├── target-app/                  # Sample Spring Boot app (with bugs)
-│   ├── src/main/java/          # Application source
-│   ├── src/test/java/          # Test suite
-│   └── pom.xml                 # Maven configuration
-│
-├── infrastructure/              # Cloud infrastructure
-│   ├── terraform/              # Terraform modules
-│   │   ├── modules/
-│   │   │   ├── cloud-run/
-│   │   │   ├── logging/
-│   │   │   └── vertex-ai/
-│   │   └── environments/
-│   │       ├── dev/
-│   │       └── prod/
-│   └── scripts/                # Deployment scripts
-│
-├── docs/                        # Documentation
-├── .github/workflows/           # CI/CD pipelines
-├── CLAUDE.md                    # AI assistant guidelines
-└── README.md                    # This file
+  NullPointerException発生!
+         │
+         ▼
+  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+  │  👁️ Sensing  │────▶│ 🔬 Reflection│────▶│ 🧬 Evolution │
+  │    感知      │     │     反射     │     │     進化     │
+  │              │     │              │     │              │
+  │ Cloud Logging│     │ テスト自動生成│     │ Geminiが修正 │
+  │ + Gemini RCA │     │ Testcontainers│    │ OpenRewrite  │
+  └──────────────┘     └──────────────┘     └──────┬───────┘
+                                                    │
+                              ┌──────────────┐      │
+                              │ 📚 Learning  │◀─────┤
+                              │    学習      │      │
+                              │              │      ▼
+                              │ パターン蓄積 │  ┌──────────────┐
+                              │ Knowledge DB │  │ 🏛️ Governance│
+                              └──────────────┘  │     統治     │
+                                                │              │
+                                                │ Blast Radius │
+                                                │ Auto-Merge   │
+                                                └──────────────┘
+                                                       │
+                                                       ▼
+                                                 ✨ 金継ぎ完了
 ```
 
-## Tech Stack
+| Phase | 機能 | Google Cloud 連携 |
+|-------|------|-------------------|
+| **Sensing（感知）** | エラー検知 + 根本原因分析 | Cloud Logging → Gemini 2.5 Pro |
+| **Reflection（反射）** | バグ再現テスト自動生成・実行 | Gemini 2.5 Pro + Testcontainers |
+| **Evolution（進化）** | コード修正 + リファクタリング | Gemini 2.5 Pro + OpenRewrite |
+| **Governance（統治）** | 影響範囲分析 + 自動マージ/PR | Gemini 2.5 Pro + GitHub API |
+| **Learning（学習）** | 修正パターンのナレッジベース蓄積 | Cloud Storage |
+
+## 🛠️ Tech Stack
 
 | Category | Technology |
 |----------|------------|
-| **Agent Core** | Python 3.11+, Vertex AI SDK |
+| **Agent Core** | Python 3.11+, FastAPI, Vertex AI SDK |
+| **AI Model** | Gemini 2.5 Pro (RCA, Test Gen, Code Fix) / Flash (Learning) |
 | **Target App** | Java 21, Spring Boot 3.2 |
-| **AI Model** | Gemini 2.5 Pro / Flash |
-| **Testing** | Testcontainers, JUnit 5 |
-| **Refactoring** | OpenRewrite |
+| **Testing** | Testcontainers, JUnit 5, Maven |
+| **Refactoring** | OpenRewrite (common-static-analysis) |
 | **Infrastructure** | Cloud Run, Cloud Logging, Terraform |
 | **Protocol** | MCP (Model Context Protocol) |
+| **Demo** | SSE (Server-Sent Events) リアルタイムストリーミング |
 
-## Quick Start
+## 📁 Project Structure
 
-### Prerequisites
+```
+kintsugi-helix/
+├── agent-core/                  # Python エージェント本体
+│   ├── src/
+│   │   ├── sensing/            # 障害検知 & 根本原因分析
+│   │   ├── reflection/         # テスト自動生成 & 実行
+│   │   ├── evolution/          # コード修正 & リファクタリング
+│   │   ├── governance/         # Blast Radius & PR管理
+│   │   ├── mcp/               # MCP Server + Demo UI
+│   │   └── utils/             # Vertex AI Client, Git操作
+│   ├── tests/                  # テストスイート
+│   └── config/                 # 設定ファイル
+├── target-app/                  # デモ用 Spring Boot アプリ (バグ入り)
+├── infrastructure/              # Terraform + デプロイスクリプト
+└── articles/                    # Zenn 技術記事
+```
 
-- Python 3.11+
-- Java 21+
-- Docker
-- Google Cloud SDK
-- Terraform 1.5+
-
-### Installation
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/kintsugi-helix.git
+# Clone
+git clone https://github.com/hatyibei/kintsugi-helix.git
 cd kintsugi-helix
 
-# Set up Python environment
+# Python環境セットアップ
 cd agent-core
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Set up Google Cloud credentials
+# Google Cloud認証
 gcloud auth application-default login
 export GOOGLE_CLOUD_PROJECT=your-project-id
 
-# Build target application
-cd ../target-app
-./mvnw clean package
+# エージェント起動
+python -m src.main --serve --port 8080
 ```
 
-### Running the Agent
+**デモUI**: http://localhost:8080/demo/ にアクセスして「実行開始」をクリック
 
-```bash
-# Start the agent in development mode
-cd agent-core
-python -m src.main --mode=dev
-
-# Run with specific incident ID
-python -m src.main --incident-id=abc123
-```
-
-### Infrastructure Deployment
-
-```bash
-cd infrastructure/terraform/environments/dev
-terraform init
-terraform plan
-terraform apply
-```
-
-## Configuration
-
-Environment variables:
+## ⚙️ Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GOOGLE_CLOUD_PROJECT` | GCP Project ID | Required |
-| `VERTEX_AI_LOCATION` | Vertex AI region | `us-central1` |
+| `VERTEX_AI_LOCATION` | Vertex AI region | `asia-northeast1` |
 | `LOG_FILTER` | Cloud Logging filter | `severity>=ERROR` |
-| `AUTO_MERGE_THRESHOLD` | Blast radius threshold | `0.3` |
+| `AUTO_MERGE_THRESHOLD` | Blast Radius 自動マージ閾値 | `0.3` |
 | `GITHUB_TOKEN` | GitHub API token | Required for PRs |
 
-## Development
+## 📝 License
 
-### Running Tests
-
-```bash
-# Agent tests
-cd agent-core
-pytest tests/ -v
-
-# Target app tests
-cd target-app
-./mvnw test
-```
-
-### Code Style
-
-```bash
-# Python
-ruff check agent-core/
-black agent-core/
-
-# Java
-./mvnw spotless:apply
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Acknowledgments
-
-- Google Cloud Platform for Vertex AI and Cloud services
-- The OpenRewrite project for code transformation capabilities
-- Testcontainers for enabling realistic test environments
+MIT License
 
 ---
 
-**Built for Google Cloud Hackathon 2025**
+**🏆 Built for [第4回 Agentic AI Hackathon with Google Cloud](https://zenn.dev/hackathons/2026-02-google-cloud-japan-ai-hackathon-04) (2026)**
