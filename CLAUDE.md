@@ -4,7 +4,7 @@ This document provides comprehensive guidance for AI assistants working with the
 
 ## Project Overview
 
-**Kintsugi-Helix** is an autonomous maintenance engineer system that uses Vertex AI (Gemini 1.5 Pro) to automatically detect, analyze, and repair bugs in Java/Spring Boot applications. The project is built for the Google Cloud Hackathon.
+**Kintsugi-Helix** is an autonomous maintenance engineer system that uses Vertex AI (Gemini 2.5 Pro) to automatically detect, analyze, and repair bugs in Java/Spring Boot applications. The project is built for the Google Cloud Hackathon.
 
 ### Core Philosophy
 
@@ -254,8 +254,8 @@ from google.cloud import aiplatform
 from vertexai.generative_models import GenerativeModel
 
 # Model selection
-GEMINI_PRO = "gemini-1.5-pro"     # Complex reasoning tasks
-GEMINI_FLASH = "gemini-1.5-flash" # Fast, simple tasks
+GEMINI_PRO = "gemini-2.5-pro"     # Complex reasoning tasks
+GEMINI_FLASH = "gemini-2.5-flash" # Fast, simple tasks
 
 # Initialize in main.py
 aiplatform.init(

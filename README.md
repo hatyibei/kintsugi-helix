@@ -2,7 +2,7 @@
 
 > **金継ぎ (Kintsugi)** - The Japanese art of repairing broken pottery with gold, treating breakage as part of the object's history.
 
-An autonomous maintenance engineer powered by Vertex AI (Gemini 1.5 Pro) that detects, analyzes, and repairs software defects in Java/Spring Boot applications.
+An autonomous maintenance engineer powered by Vertex AI (Gemini 2.5 Pro) that detects, analyzes, and repairs software defects in Java/Spring Boot applications.
 
 ## Overview
 
@@ -85,7 +85,7 @@ kintsugi-helix/
 |----------|------------|
 | **Agent Core** | Python 3.11+, Vertex AI SDK |
 | **Target App** | Java 21, Spring Boot 3.2 |
-| **AI Model** | Gemini 1.5 Pro / Flash |
+| **AI Model** | Gemini 2.5 Pro / Flash |
 | **Testing** | Testcontainers, JUnit 5 |
 | **Refactoring** | OpenRewrite |
 | **Infrastructure** | Cloud Run, Cloud Logging, Terraform |

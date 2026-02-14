@@ -19,8 +19,8 @@ logger = structlog.get_logger()
 class VertexAIClient:
     """Client for interacting with Vertex AI Gemini models."""
 
-    GEMINI_PRO = "gemini-1.5-pro"
-    GEMINI_FLASH = "gemini-1.5-flash"
+    GEMINI_PRO = "gemini-2.5-pro"
+    GEMINI_FLASH = "gemini-2.5-flash"
 
     def __init__(self, settings: Settings) -> None:
         """Initialize the Vertex AI client.

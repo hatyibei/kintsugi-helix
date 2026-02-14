@@ -1,7 +1,7 @@
 """Root cause analyzer using Gemini.
 
 Analyzes error logs and stack traces to identify the root cause.
-Leverages Gemini 1.5 Pro's long context for comprehensive code understanding.
+Leverages Gemini 2.5 Pro's long context for comprehensive code understanding.
 """
 
 import hashlib
@@ -395,7 +395,7 @@ class SourceCodeExtractor:
 class RootCauseAnalyzer:
     """Analyzes errors to determine root cause using Gemini.
 
-    Leverages Gemini 1.5 Pro's long context window to include
+    Leverages Gemini 2.5 Pro's long context window to include
     full source code of affected classes for precise analysis.
     """
 
@@ -639,7 +639,7 @@ class RootCauseAnalyzer:
             parts.append(incident["trace"])
             parts.append("```")
 
-        # Source files (leverage Gemini 1.5 Pro's long context)
+        # Source files (leverage Gemini 2.5 Pro's long context)
         if source_files:
             parts.append("\n" + "=" * 80)
             parts.append("SOURCE CODE CONTEXT")
@@ -740,7 +740,7 @@ Provide your analysis in structured JSON format."""
         return await self.vertex_client.generate_structured(
             prompt=prompt,
             response_schema=schema,
-            model_name="gemini-1.5-pro",  # Use Pro for complex analysis
+            model_name="gemini-2.5-pro",  # Use Pro for complex analysis
             temperature=0.1,
         )
 

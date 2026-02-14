@@ -1,6 +1,6 @@
 """Blast radius analyzer for assessing change impact.
 
-Evaluates the risk and scope of proposed changes using Gemini 1.5 Pro's
+Evaluates the risk and scope of proposed changes using Gemini 2.5 Pro's
 long context capability for deep analysis of import graphs and business logic.
 """
 
@@ -266,7 +266,7 @@ class ImportGraphAnalyzer:
 class BlastRadiusAnalyzer:
     """Analyzes the blast radius (impact) of proposed changes.
 
-    Uses Gemini 1.5 Pro's long context capability for deep analysis
+    Uses Gemini 2.5 Pro's long context capability for deep analysis
     of import relationships and business logic impact.
     """
 
@@ -312,7 +312,7 @@ class BlastRadiusAnalyzer:
     ) -> BlastRadiusResult:
         """Analyze the blast radius of proposed fixes.
 
-        Uses Gemini 1.5 Pro with full context including:
+        Uses Gemini 2.5 Pro with full context including:
         - All modified source files
         - Import/dependency graphs
         - Related source files (importers and imported classes)

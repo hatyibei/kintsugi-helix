@@ -293,7 +293,7 @@ Generate a complete, compilable JUnit 5 test class."""
         result = await self.vertex_client.generate_structured(
             prompt=prompt,
             response_schema=schema,
-            model_name="gemini-1.5-pro",
+            model_name="gemini-2.5-pro",
             temperature=0.2,
         )
 
@@ -619,7 +619,7 @@ Generate a complete, compilable JUnit 5 test class that proves the bug exists.""
         return await self.vertex_client.generate_structured(
             prompt=prompt,
             response_schema=self._get_test_schema(),
-            model_name="gemini-1.5-pro",
+            model_name="gemini-2.5-pro",
             temperature=0.3,
         )
 

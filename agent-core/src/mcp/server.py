@@ -13,6 +13,7 @@ import structlog
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from src.demo.demo_router import router as demo_router
 from src.governance.blast_radius import BlastRadiusAnalyzer, ImportGraphAnalyzer
 from src.sensing.log_collector import LogCollector
 from src.sensing.root_cause_analyzer import (
@@ -238,6 +239,7 @@ class MCPServer:
             version="0.3.0",
         )
         self._setup_routes()
+        self.app.include_router(demo_router)
         self._initialized = False
 
         logger.info("MCPServer created", default_repo=str(self.default_repo_path))
