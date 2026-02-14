@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     )
 
     # Model Selection
-    default_model: Literal["gemini-1.5-pro", "gemini-1.5-flash"] = Field(
-        default="gemini-1.5-pro",
+    default_model: Literal["gemini-2.5-pro", "gemini-2.5-flash"] = Field(
+        default="gemini-2.5-pro",
         description="Default Gemini model to use",
     )
 
