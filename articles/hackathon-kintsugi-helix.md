@@ -11,6 +11,11 @@ published: true
 「壊れた部分を金で修復し、より美しく仕上げる」金継ぎの哲学を、ソフトウェア障害回復に適用した自律型AIエージェント **Kintsugi-Helix** を開発しました。Vertex AI Gemini 2.5 Proを活用し、障害検知から修正・テスト・デプロイまでを人間の介入なしに実行します。
 
 **リポジトリ**: https://github.com/hatyibei/kintsugi-helix
+**ライブデモ**: https://kintsugi-helix-agent-541617236229.asia-northeast1.run.app/demo/
+
+## デモ動画
+
+@[youtube](PLACEHOLDER_VIDEO_ID)
 
 ## 金継ぎ（Kintsugi）とは
 
@@ -24,24 +29,63 @@ Kintsugi-Helixは、この哲学をソフトウェアに適用します：
 
 Kintsugi-Helixは、4つの中核機能（柱）で構成されています。
 
+```mermaid
+graph TB
+    subgraph GCP["☁️ Google Cloud Platform"]
+        direction TB
+        CL["📊 Cloud Logging<br/>エラーログ収集"]
+        VAI["🧠 Vertex AI<br/>Gemini 2.5 Pro"]
+        CR["🚀 Cloud Run<br/>Agent + MCP Server"]
+        AR["📦 Artifact Registry<br/>Docker Images"]
+    end
+
+    subgraph Agent["🔧 Kintsugi-Helix Agent"]
+        direction TB
+        subgraph S["👁️ Sensing（感知）"]
+            LC["Log Collector"]
+            RCA["Root Cause Analyzer"]
+            STP["Stack Trace Parser"]
+        end
+        subgraph R["🔬 Reflection（反射）"]
+            TG["Test Generator"]
+            TCR["Testcontainer Runner"]
+        end
+        subgraph E["🧬 Evolution（進化）"]
+            CF["Code Fixer"]
+            OR["OpenRewrite"]
+            LM["Learning Memory"]
+        end
+        subgraph G["🏛️ Governance（統治）"]
+            BR["Blast Radius Analyzer"]
+            PM["PR Manager"]
+        end
+    end
+
+    subgraph Target["🎯 Target App (Spring Boot 3.2 / Java 21)"]
+        SA["Application Code"]
+        MV["Maven + Testcontainers"]
+    end
+
+    CL -->|"Error Logs"| LC
+    LC --> STP
+    STP --> RCA
+    RCA -->|"Gemini API"| VAI
+    RCA --> TG
+    TG -->|"Gemini API"| VAI
+    TG --> TCR
+    TCR -->|"Maven Test"| SA
+    TCR --> CF
+    CF -->|"Gemini API"| VAI
+    CF --> OR
+    OR --> BR
+    BR -->|"Gemini API"| VAI
+    BR --> PM
+    CF --> LM
+    PM -->|"Git Push"| Target
+    CR --> Agent
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Kintsugi-Helix                           │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │   Sensing    │───▶│  Reflection  │───▶│  Evolution   │      │
-│  │    (感知)    │    │    (反射)    │    │    (進化)    │      │
-│  └──────────────┘    └──────────────┘    └──────────────┘      │
-│         │                   │                   │               │
-│         ▼                   ▼                   ▼               │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    Governance (統治)                      │  │
-│  │         Blast Radius Analysis & Auto-Merge               │  │
-│  └──────────────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────────────┤
-│   Cloud Logging  │  Vertex AI Gemini  │  Cloud Run  │  GitHub  │
-└─────────────────────────────────────────────────────────────────┘
-```
+
+**ライブデモ**: https://kintsugi-helix-agent-541617236229.asia-northeast1.run.app/demo/
 
 ### 1. Sensing（感知）- 障害の自動検出
 
